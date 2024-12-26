@@ -1,124 +1,97 @@
-    .data
-name: .asciiz "Shahd Elnassag ^_^\n"
-numMesg: .asciiz "Enter the number: "
-baseMesg: .asciiz "Enter the base of the number: "
-resMesg: .asciiz "Number in decimal = "
-overflowMesg: .asciiz "Overflow occurred. Max value reached.\n"
-newline: .asciiz "\n"
+# Salma Gamal 20221073
+# Aya Ehab    20221209
 
-    .text
-    .globl main
 
-# Main entry point of the program
+.data
+base1: .asciiz "Enter the current system: "
+num: .asciiz "Enter the number: "
+base2:.asciiz "Enter the new system: "
+errorMeg: .asciiz "Invalid number for the given base.\n"
+buffer: .space 32  # Allocate space for the string (32bytes)
+
+.text
 main:
-    # Print my name
-    la $a0, name
-    li $v0, 4
-    syscall
 
-    # Print message to enter the number
-    la $a0, numMesg
-    li $v0, 4
-    syscall
+# Print base1
+li $v0,4 # Syscall code for print_string
+la $a0,base1 # Load the address
+syscall 
+# Get the intger input
+li $v0,5
+syscall 
+move $t0,$v0 #now  t0=base1
 
-    # Get number from user
-    li $v0, 5
-    syscall
-    move $t2, $v0 # $t2 --> number
+# Print num
+li $v0,4 # Syscall code for print_string
+la $a0,num # Load the address
+syscall 
+# Get the string input
+li $v0, 8 # Syscall code for reading a string
+la $a0, buffer # Load the address of the buffer
+li $a1, 32 # Set the maximum length of the input
+syscall 
 
-    # Print message to enter the base
-    la $a0, baseMesg
-    li $v0, 4
-    syscall
+#💡 Validate number for current base
+la $a0,buffer # Pass arguments (buffer)to the valid function
+move $a1,$t0 #Passes the current base to the valid unction.
+jal valid #Call function
+beqz $v0,invalid
 
-    # Get base from user
-    li $v0, 5
-    syscall
-    move $t1, $v0 # $t1 --> base
+# Print for desired base
+li $v0,4 # Syscall code for print_string
+la $a0,base2 # Load the address
+syscall 
+# Get the intger input
+li $v0,5
+syscall 
+move $t2, $v0   # $t2 = desired base
 
-    # Call function to convert number to decimal
-    jal OtherToDecimal
+ # Continue ...
+j exit
 
-    # Print newline
-    la $a0, newline
-    li $v0, 4
-    syscall
+invalid:
+li $v0,4
+la $a0,errorMeg
+syscall 
+j exit # Exit immediately after showing the error message 
 
-    # Terminate the program
-    li $v0, 10
-    syscall
 
-# Function: OtherToDecimal
-# Converts a number from a given base to decimal
-OtherToDecimal:
-    li $t0, 0       # $t0 --> result in decimal
-    li $t3, 0       # $t3 --> power (position)
-    li $t4, 0       # $t4 --> current digit
-    li $t5, 10      # $t5 --> divisor for extracting digits
-    li $t6, 0x7FFFFFFF  # $t6 --> max 32-bit value (2^31 - 1)
+exit:
+   li $v0,10
+   syscall 
+   
+valid:
+ # $a0 = buffer (string), $a1 = base1
+la $t3, buffer    # Pointer to the input string
+move $t4, $a1     # Copy the base1 to $t4
+li $v0, 1         # Assume valid, set return value to 1
+  loop:
+    lb $t5,0($t3) # Load the current character from the string
+    beqz $t5, validateEnd #  If $t5 is zero ,null terminator,the loop ends
+    blt $t5, 58, valid_digit  # If the character is '0' to '9' (ASCII 48-57), jump to valid_digit
+    bgt $t5, 64, check_alpha  # If the character is 'A' to 'F' (ASCII 65-70), jump to check_alpha
 
-DecimalLoop:
-    beq $t2, $zero, DecimalEndLoop # Exit when the number is fully processed
 
-    # Extract the last digit of the number
-    div $t2, $t5
-    mfhi $t4                  # $t4 = last digit (remainder)
+valid_digit:
+    sub $t5, $t5, 48          # Convert ASCII value of '0' to '9' (48-57) to its integer value (0-9)
+    bge $t5, $t4, invalidate  # If the digit >= the base, invalidate 
+    j next_char                # If valid, jump to next character
 
-    # Calculate base^power
-    move $a0, $t1             # Base
-    move $a1, $t3             # Power (position)
-    jal power                 # Call power function
 
-    # Multiply the digit by base^power
-    mul $t6, $t4, $v0         # $t6 = digit * (base^power)
+check_alpha:
+    sub $t5, $t5, 55          # Convert ASCII value of 'A' to 'F' (65-70) to its integer value (10-15)
+    bge $t5, $t4, invalidate  # If the value >= the base 
+    j next_char                # If valid, jump to next character
 
-    # Check for overflow before adding
-    addu $t7, $t0, $t6        # $t7 = $t0 + $t6
-    blt $t7, $t6, OverflowDetected # If addition overflows, jump to overflow handler
+  
+next_char:
+    addi $t3, $t3, 1          # Move to the next character in the input string
+    j loop                    # Repeat the loop to check the next character
+    
+    
+    
+invalidate:
+    li $v0, 0                 # Set return value to 0 (invalid)
 
-    # Add to the result
-    add $t0, $t0, $t6         # $t0 += $t6
-
-    # Update for next digit
-    div $t2, $t5              # Remove the last digit from $t2
-    addi $t3, $t3, 1          # Increment the power (position)
-    j DecimalLoop             # Repeat the loop
-
-DecimalEndLoop:
-    # Print result message
-    la $a0, resMesg
-    li $v0, 4
-    syscall
-
-    # Print the result
-    move $a0, $t0
-    li $v0, 1
-    syscall
-    jr $ra
-
-# Function: power
-# Calculates base^exponent
-power:
-    li $t0, 1                 # $t0 --> result
-    li $t3, 0                 # $t3 --> counter
-
-PowerLoop:
-    bge $t3, $a1, PowerEnd    # Exit loop if counter >= exponent
-    mul $t0, $t0, $t1         # $t0 *= base
-    addi $t3, $t3, 1          # Increment counter
-    j PowerLoop               # Repeat the loop
-
-PowerEnd:
-    move $v0, $t0             # Return result in $v0
-    jr $ra
-
-# Overflow Detection Handler
-OverflowDetected:
-    # Print overflow message
-    la $a0, overflowMesg
-    li $v0, 4
-    syscall
-
-    # Set result to max 32-bit value (2^31 - 1)
-    li $t0, 0x7FFFFFFF        # Set result to max 32-bit value (2^31 - 1)
+validateEnd:
     jr $ra                    # Return to caller
