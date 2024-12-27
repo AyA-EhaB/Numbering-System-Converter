@@ -8,9 +8,8 @@ newline: .asciiz "\n"
 bases: .asciiz "0123456789ABCDEF"  
 result: .space 32                   
 input: .space 16                    
-prompt: .asciiz "Enter a decimal number: "                     
-number: .space 100             # number (string of chars)
-base: .word 0                  # Store base 
+resMesg:.asciiz "this is the answer"
+
 arrayDigits: .byte '0', '1', '2', '3', '4', '5', '6', '7', '8', '9', 'A', 'B', 'C', 'D', 'E', 'F' 
 
 .text
@@ -57,16 +56,6 @@ main:
     move $a1, $t0            # Pass the base1
     jal OtherToDecimal       # Convert the number to decimal (result in $t1)
 
-    # Print the result message (Decimal Result)
-    li $v0, 4
-    la $a0, resMesg
-    syscall
-
-    # Print the decimal number
-    li $v0, 1               # Syscall code to print integer
-    move $a0, $t1           # Pass the decimal value in $t1
-    syscall
-
     # Convert decimal value to the new base (base2)
     move $t0, $t1           # Copy the decimal value into $t0
     move $t1, $t2           # Move base2 value into $t1
@@ -110,9 +99,8 @@ valid:
 
     next_char:
         addi $t3, $t3, 1      # Move to the next character in the input string
-        j loop                 # Repeat the loop to check the next character
-
-    invalidate:
+        j loop                 # Repeat the loop to check the next characte
+        invalidate:
         li $v0, 0             # Set return value to 0 (invalid)
 
     validateEnd:
@@ -134,8 +122,8 @@ endLoop:
 mainTest:
     la $a1, arrayDigits   # Load digits array into $a1
     li $s0, 0             # I counter register $s0 to 0
-    lw $t0, base          # Load base into $t0
-    la $a0, number        # Load of number into $a0
+    lw $t0, base2          # Load base into $t0
+    la $a0, num       # Load of number into $a0
     li $a1, 100           # Max string length for number
     # Print the result message
     la $a0, resMesg
@@ -147,7 +135,7 @@ mainTest:
 
 # Other To Decimal Function
 OtherToDecimal: 
-    la $t3, number        # Load number string into $t3
+    la $t3, buffer    # Load number string into $t3
     li $t5, 0             # length counter $t5 to 0
     jal numLength         # Call numLength function to calculate the length of the number string
 
@@ -161,7 +149,7 @@ OtherToDecimal:
     li $t6, 0             # Reset index for number string to 0
     li $t1, 0             # Initialize result to 0
 
-    la $t3, number        # Load address of number string into $t3
+    la $t3, buffer    # Load address of number string into $t3
 funLoop:
     beq $t6, $t5, EndOtherToDecimal  # If index matches length, end the loop
     lb $t7, 0($t3)        # Load current digit character from number string into $t7
@@ -179,19 +167,14 @@ funLoop:
     j funLoop             # Repeat the loop for the next character
 
 EndOtherToDecimal:
-    # Print the final result 
-    li $v0, 1             
-    move $a0, $t1         
-    syscall
-
-    # Print a newline
-    li $v0, 4
-    la $a0, newline       
-    syscall
-
     # Exit the program
-    li $v0, 10           
+     move $t0, $t1           # Copy the decimal value into $t0
+    move $t1, $t2           # Move base2 value into $t1
+    jal DecimalToAnyBase    # Convert decimal to new base
+      # Exit program
+    li $v0, 10
     syscall
+
 
 # Get the length of the string
 numLength:
@@ -236,9 +219,9 @@ endSearch:
 # Converts a decimal string
 StringToInt:
     addi  $t0,$zero, 0  #decimal =0;
-    addi   $t1,$zero,0       
-
-stringToDecimalloop:
+    addi   $t1,$zero,0
+    
+    stringToDecimalloop:
     lb $t2, input($t1)     
     beq $t2,0, done              
     subi $t2, $t2, 48            #char  to decimal
@@ -278,4 +261,4 @@ loopd:
     j loopd
 
 Exist:
-    jr $ra                   # Function end
+    jr $ra
