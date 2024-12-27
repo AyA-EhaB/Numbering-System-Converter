@@ -2,220 +2,177 @@
 base1:      .asciiz "Enter the current system: "
 num:        .asciiz "Enter the number: "
 base2:      .asciiz "Enter the new system: "
-errorMeg:   .asciiz "Invalid number for the given base.\n"
-decimal_msg:.asciiz "Decimal conversion: "
-buffer:     .space 32  
-bases:      .asciiz "0123456789ABCDEF"  # Characters for digits in base 2 to base 16
-result: .space 128       # Increase buffer size if necessary (e.g., 128 bytes)
-overflow_msg: .asciiz "Error: Overflow occurred.\n"
-
+errorMsg:   .asciiz "Invalid number for the given base.\n"
+buffer:     .space 32      # Buffer for user input
+bases:      .asciiz "0123456789ABCDEF" # Characters for digits in base 2 to base 16
+result:     .space 32      # Space for the result
 .text
+.globl main
+
 main:
-    # Print base1 prompt
-    li $v0, 4              
-    la $a0, base1         
-    syscall 
+    # Get current base (base1)
+    li $v0, 4
+    la $a0, base1
+    syscall
+    
+    li $v0, 5
+    syscall
+    move $t0, $v0    # Store base1 in $t0
 
-    # Get the current base (base1) as an integer
-    li $v0, 5             
-    syscall 
-    move $t0, $v0           # $t0 = base1
-
-    # Print num prompt
-    li $v0, 4              
-    la $a0, num             
-    syscall 
-
-    # Get the number input as a string
-    li $v0, 8              
-    la $a0, buffer         
-    li $a1, 32             
-    syscall 
+    # Get number to be converted
+    li $v0, 4
+    la $a0, num
+    syscall
+    
+    li $v0, 8
+    la $a0, buffer
+    li $a1, 32
+    syscall
 
     # Validate the number for the current base
-    la $a0, buffer         
-    move $a1, $t0          
-    jal valid               # Validate number input
+    la $a0, buffer   # Pass buffer to validation function
+    move $a1, $t0    # Pass base1 to validation function
+    jal valid
+    beqz $v0, invalid
 
-    beqz $v0, invalid       # If invalid, jump to the invalid case
-
-    # Print base2 prompt
-    li $v0, 4              
-    la $a0, base2          
-    syscall 
-
-    # Get the desired base (base2) as an integer
-    li $v0, 5              
-    syscall 
-    move $t2, $v0           # $t2 = desired base
-
-    # Convert the number from base1 to decimal
-    la $a0, buffer         
-    move $a1, $t0          
-    jal OtherToDecimal      # Convert to decimal
-    move $t3, $v0           # Store decimal result in $t3
-
-    # Print the decimal result
-    li $v0, 4              
-    la $a0, decimal_msg     
-    syscall
-    li $v0, 1              
-    move $a0, $t3          
+    # Get new base (base2)
+    li $v0, 4
+    la $a0, base2
     syscall
 
-    # Convert the decimal result to the desired base (base2)
-    move $a0, $t3          
-    move $a1, $t2          
-    jal DecimalToAnyBase    # Convert to new base
-
-    # Print the result
-    la $t4, result          
-print_result:
-    lb $t5, 0($t4)          
-    beqz $t5, exit          
-    li $v0, 11              
-    move $a0, $t5          
+    li $v0, 5
     syscall
-    addi $t4, $t4, 1        
-    j print_result         
+    move $t2, $v0    # Store base2 in $t2
+
+    # Convert the number to decimal (OtherToDecimal function)
+    la $a0, buffer
+    move $a1, $t0    # Pass the current base
+    jal OtherToDecimal
+
+    # Convert the decimal number to the new base (DecimalToOther function)
+    move $t0, $v0    # Move decimal result to $t0
+    move $t1, $t2    # Move new base to $t1
+    jal DecimalToOther
+
+    # Exit program
+    j exit
 
 invalid:
-    # Print error message if input is invalid
-    li $v0, 4              
-    la $a0, errorMeg        
+    li $v0, 4
+    la $a0, errorMsg
     syscall
+    j exit
 
 exit:
-    li $v0, 10              
+    li $v0, 10
     syscall
-
-
-# Function: valid
-valid:
-    la $t3, buffer
-    move $t4, $a1           # Set base1
-    li $v0, 1               # Assume valid
-
-loop_valid:
-    lb $t5, 0($t3)          
-    beqz $t5, validateEnd   
-    blt $t5, 58, valid_digit
-    bgt $t5, 64, check_alpha
-    j invalidate
-
-valid_digit:
-    sub $t5, $t5, 48        
-    bge $t5, $t4, invalidate
-    j next_valid
-
-check_alpha:
-    sub $t5, $t5, 55        
-    bge $t5, $t4, invalidate
-
-next_valid:
-    addi $t3, $t3, 1        
-    j loop_valid
-
-invalidate:
-    li $v0, 0               
-    j validateEnd
-
-validateEnd:
-    jr $ra                   # Return from the function
 
 # Function: OtherToDecimal
+# Converts a number from a given base to decimal
 OtherToDecimal:
-    li $t0, 0           # $t0 = result (decimal)
-    li $t3, 0           # $t3 = power (position)
-    li $t4, 0           # $t4 = current digit
-    li $t5, 10          # $t5 = divisor for extracting digits
+    li $t0, 0       # Result in decimal
+    li $t3, 0       # Power (position)
+    li $t4, 0       # Current digit
+    li $t5, 10      # Divisor for extracting digits
 
 DecimalLoop:
-    lb $t4, 0($a0)      # Load the next digit from the number string
-    beqz $t4, DecimalEndLoop  # End when no more digits
+    beq $t2, $zero, DecimalEndLoop  # Exit when the number is fully processed
+    div $t2, $t5                   # Divide number by base
+    mfhi $t4                        # Last digit (remainder)
 
-    div $t4, $t5        # Divide by 10 to get last digit
-    mfhi $t4            # Get the last digit (remainder)
-    mflo $a0            # Update to the next digit
+    # Calculate base^power using power function
+    move $a0, $t1
+    move $a1, $t3
+    jal power                       # Call power function
 
-    move $a0, $t1       # Base
-    move $a1, $t3       # Power (position)
-    jal power           # Calculate base^power
+    # Multiply digit by base^power
+    mul $t6, $t4, $v0               # $t6 = digit * base^power
+    add $t0, $t0, $t6               # Add to result
 
-    mul $t6, $t4, $v0   # Multiply digit by base^power
-    add $t0, $t0, $t6   # Add to result
-
-    addi $t3, $t3, 1    # Increment power (position)
-    j DecimalLoop       # Repeat for next digit
+    div $t2, $t5                    # Remove last digit
+    addi $t3, $t3, 1                # Increment power
+    j DecimalLoop                   # Repeat loop
 
 DecimalEndLoop:
-    move $v0, $t0       # Return decimal result
-    jr $ra              # Return from function
+    move $v0, $t0                   # Return result in $v0
+    jr $ra
 
 # Function: power
+# Calculates base^exponent iteratively
 power:
-    li $t0, 1           # $t0 = result (base^exponent)
-    li $t3, 0           # $t3 = counter
+    li $t0, 1                 # $t0 --> result
+    li $t3, 0                 # $t3 --> counter
 
 PowerLoop:
-    bge $t3, $a1, PowerEnd
-    mul $t0, $t0, $t1   # Multiply result by base
-    bnez $t0, noPowerOverflow
-    j powerOverflow
-
-noPowerOverflow:
-    addi $t3, $t3, 1    # Increment counter
-    j PowerLoop
+    bge $t3, $a1, PowerEnd    # Exit loop if counter >= exponent
+    mul $t0, $t0, $t1         # $t0 *= base
+    addi $t3, $t3, 1          # Increment counter
+    j PowerLoop               # Repeat the loop
 
 PowerEnd:
-    move $v0, $t0       # Return result (base^exponent)
-    jr $ra               # Return from function
+    move $v0, $t0             # Return result in $v0
+    jr $ra
 
-powerOverflow:
-    li $v0, 4              
-    la $a0, overflow_msg  # Print overflow message
+# Function: DecimalToOther
+# Converts a decimal number to the desired base
+DecimalToOther:
+    li $t3, 0       # Index for result
+    li $t4, 0       # Remainder
+    li $t5, 16      # Maximum base (hexadecimal)
+
+ConvertLoop:
+    beqz $t0, ConvertEnd    # Exit if number is 0
+    div $t0, $t1            # Divide by base
+    mfhi $t4                # Remainder (digit)
+    mflo $t0                # Quotient
+    lb $t6, bases($t4)      # Get the digit from 'bases' string
+    sb $t6, result($t3)     # Store character in result
+    addi $t3, $t3, 1        # Increment index
+    j ConvertLoop
+
+ConvertEnd:
+    li $t7, 0               # Reverse the result to print correctly
+ReverseLoop:
+    beq $t3, $t7, PrintResult  # If all characters have been processed
+    subi $t3, $t3, 1          # Decrement index
+    lb $a0, result($t3)       # Load character from result
+    li $v0, 11               # Syscall to print character
     syscall
-    j exit
+    j ReverseLoop
 
-# Handle multiplication overflow (both power and main logic)
-overflow:
-    li $v0, 4              
-    la $a0, overflow_msg  # Print overflow message
-    syscall
-    j exit
+PrintResult:
+    jr $ra
 
-exitp:
-    li $v0, 10               
-    syscall
+# Function: valid
+# Validates if the number matches the given base
+valid:
+    # $a0 = buffer (string), $a1 = base
+    la $t3, buffer    # Pointer to input string
+    move $t4, $a1     # Copy base to $t4
+    li $v0, 1         # Assume valid, set return value to 1
 
+checkLoop:
+    lb $t5, 0($t3)     # Load current character
+    beqz $t5, validateEnd  # If null terminator, end loop
+    blt $t5, 58, valid_digit   # Check if '0'-'9'
+    bgt $t5, 64, check_alpha   # Check if 'A'-'F'
 
-# Function: DecimalToAnyBase
-# Converts a decimal number to another base
-DecimalToAnyBase:
-    move $t0, $a0       # Load decimal number
-    move $t1, $a1       # Load target base
-    li $t3, 0           # Index for result
-    li $t4, 0           # Temporary for remainder
+valid_digit:
+    sub $t5, $t5, 48       # Convert '0'-'9' to 0-9
+    bge $t5, $t4, invalidate # If digit >= base, invalidate
+    j next_char
 
-    # Handle zero case immediately
-    beqz $t0, print_zero
+check_alpha:
+    sub $t5, $t5, 55       # Convert 'A'-'F' to 10-15
+    bge $t5, $t4, invalidate # If value >= base, invalidate
+    j next_char
 
-while:
-    beq $t0, $zero, print_result    # If number is zero, go to print
-    div $t0, $t1                 # Divide by base
-    mfhi $t4                     # Remainder (next digit)
-    mflo $t0                     # Update the quotient
-    lb $t5, bases($t4)           # Get the character for the remainder
-    sb $t5, result($t3)          # Store the character in result
-    addi $t3, $t3, 1             # Increment result index
+next_char:
+    addi $t3, $t3, 1       # Move to next character
+    j checkLoop
 
-    li $t6, 32                  # Maximum length of result array
-    bge $t3, $t6, print_result   # If index >= 32, print the result
+invalidate:
+    li $v0, 0             # Return invalid (0)
+validateEnd:
+    jr $ra
 
-    j while
-
-print_zero:
-    li $v0, 11
-    li $a0, '0'               # Print 0 for zero input
-    syscall
-    jr $ra                     # Return from function
