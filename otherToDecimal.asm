@@ -1,106 +1,158 @@
 .data
-name: .asciiz "Shahd Elnassag ^_^\n"
-numMesg: .asciiz "Enter the number: "
-baseMesg: .asciiz "Enter the base of the number: "
-resMesg: .asciiz "Number in decimal = "
-newline: .asciiz "\n"
+# Input sentences to be printed
+name: .asciiz "Shahd Elnassag ^_^\n"              
+numMesg: .asciiz "Enter the number: "              
+baseMesg: .asciiz "Enter the base of the number: "  
+resMesg: .asciiz "Number in decimal = "            
+newline: .asciiz "\n"                            
+
+number: .space 100             # number (string of chars)
+base: .word 0                  # Store base 
+
+arrayDigits: .byte '0', '1', '2', '3', '4', '5', '6', '7', '8', '9', 'A', 'B', 'C', 'D', 'E', 'F' 
 
 .text
-.globl main
-
 main:
     # Print my name
     la $a0, name
-    li $v0, 4
+    li $v0, 4             
     syscall
 
     # Print message to enter the number
     la $a0, numMesg
-    li $v0, 4
+    li $v0, 4         
     syscall
-
-    # Get number from user
-    li $v0, 5
+    
+    # Get number 
+    la $a0, number       
+    li $a1, 100           # Max size of number string
+    li $v0, 8           
     syscall
-    move $t2, $v0 # $t2 --> number
 
     # Print message to enter the base
     la $a0, baseMesg
-    li $v0, 4
+    li $v0, 4             
     syscall
-
-    # Get base from user
-    li $v0, 5
+    
+    # Get base 
+    li $v0, 5            
     syscall
-    move $t1, $v0 # $t1 --> base
+    sw $v0, base          
 
-    # Call function to convert number to decimal
+    # Load number in $t0
+    la $t0, number
+    j loopNum            
+
+# loop for input string 
+loopNum:
+    lb $t1, 0($t0)        # ptr = current char
+    beqz $t1, endLoop     # end if number null
+    j nextChar           
+
+nextChar:
+    addi $t0, $t0, 1      # ptr = next char
+    j loopNum            
+
+endLoop:
+    j mainTest            
+    
+mainTest:
+    la $a1, arrayDigits   # Load digits array into $a1
+    li $s0, 0             # I counter register $s0 to 0
+    lw $t0, base          # Load base into $t0
+    la $a0, number        # Load of number into $a0
+    li $a1, 100           # Max string length for number
+    # Print the result message
+    la $a0, resMesg
+    li $v0, 4             
+    syscall
+    
+    # Call other base to decimal
     jal OtherToDecimal
 
-    # Print newline
-    la $a0, newline
+# Other To Decimal Function
+OtherToDecimal: 
+    la $t3, number        # Load number string into $t3
+    li $t5, 0             # length counter $t5 to 0
+    jal numLength         # Call numLength function to calculate the length of the number string
+
+    addi $t5, $t5, -1     # Adjust length to index position
+    add $t6, $t5, $zero   # Copy length into $t6 for further processing
+    addi $t6, $t6, -1     # Decrease by 1 for 0-based indexing
+
+    li $s3, 1             # Initialize multiplier to 1
+    jal Power              # Call Power function to calculate powers of the base
+
+    li $t6, 0             # Reset index for number string to 0
+    li $t1, 0             # Initialize result to 0
+
+    la $t3, number        # Load address of number string into $t3
+funLoop:
+    beq $t6, $t5, EndOtherToDecimal  # If index matches length, end the loop
+    lb $t7, 0($t3)        # Load current digit character from number string into $t7
+
+    # Search for the digit in the allowed digits array
+    jal searchDigit
+
+    # Multiply the found digit value by the base power and add to the result
+    mul $a3, $t8, $s3     # Multiply the digit's value by the current power of the base
+    add $t1, $t1, $a3     # Add the result to the final decimal result
+    addi $t6, $t6, 1      # Move to the next character
+    div $s3, $t0          # Divide base power by the base
+    mflo $s3              # Move quotient (next power) into $s3
+    addi $t3, $t3, 1      # Move to the next character in the number string
+    j funLoop             # Repeat the loop for the next character
+
+EndOtherToDecimal:
+    # Print the final result 
+    li $v0, 1             
+    move $a0, $t1         
+    syscall
+
+    # Print a newline
     li $v0, 4
+    la $a0, newline       
     syscall
 
-    # Terminate the program
-    li $v0, 10
+    # Exit the program
+    li $v0, 10           
     syscall
 
-# Function: OtherToDecimal
-# Converts a number from a given base to decimal
-OtherToDecimal:
-    li $t0, 0       # $t0 --> result in decimal
-    li $t3, 0       # $t3 --> power (position)
-    li $t4, 0       # $t4 --> current digit
-    li $t5, 10      # $t5 --> divisor for extracting digits
+# Get the length of the string
+numLength:
+    lb $t4, 0($t3)        # Load current character from number string
+    beqz $t4, EndLength   # End if null terminator is reached
+    addi $t5, $t5, 1      # Increment the length counter
+    addi $t3, $t3, 1      # Move to next character in the string
+    j numLength           # Continue the loop
 
-DecimalLoop:
-    beq $t2, $zero, DecimalEndLoop # Exit when the number is fully processed
+EndLength:
+    jr $ra                # Return from function
 
-    # Extract the last digit of the number
-    div $t2, $t5
-    mfhi $t4                  # $t4 = last digit (remainder)
+# Power function to calculate base^index
+Power: 
+    beqz $t6, EndPower    # End if index is 0
+    mul $s3, $s3, $t0     # Multiply current base power by base
+    addi $t6, $t6, -1     # Decrease index
+    j Power               # Repeat multiplication
 
-    # Calculate base^power
-    move $a0, $t1             # Base
-    move $a1, $t3             # Power (position)
-    jal power                 # Call power function
+EndPower: 
+    jr $ra                
 
-    # Multiply the digit by base^power
-    mul $t6, $t4, $v0         # $t6 = digit * (base^power)
+# Search for the digit in digits array
+searchDigit:
+    la $s4, arrayDigits   # Load address of allowed digits array
+    li $t8, 0             # ounter 
+    li $t9, 16            # digits arraySize = 16
 
-    # Add to the result
-    add $t0, $t0, $t6         # $t0 += $t6
+searchLoop:
+    beq $t8, $t9, endSearch   # End if all characters are checked
+    lb $a3, 0($s4)            # Load current digit into $a3
+    beq $a3, $t7, endSearch  # If found, end search
 
-    # Update for next digit
-    div $t2, $t5              # Remove the last digit from $t2
-    addi $t3, $t3, 1          # Increment the power (position)
-    j DecimalLoop             # Repeat the loop
+    addi $s4, $s4, 1      # Move to the next digit 
+    addi $t8, $t8, 1      # counter++
+    j searchLoop          # Continue searching
 
-DecimalEndLoop:
-    # Print result message
-    la $a0, resMesg
-    li $v0, 4
-    syscall
-
-    # Print the result
-    move $a0, $t0
-    li $v0, 1
-    syscall
-    jr $ra
-
-# Function: power
-# Calculates base^exponent
-power:
-    li $t0, 1                 # $t0 --> result
-    li $t3, 0                 # $t3 --> counter
-
-PowerLoop:
-    bge $t3, $a1, PowerEnd    # Exit loop if counter >= exponent
-    mul $t0, $t0, $t1         # $t0 *= base
-    addi $t3, $t3, 1          # Increment counter
-    j PowerLoop               # Repeat the loop
-
-PowerEnd:
-    move $v0, $t0             # Return result in $v0
-    jr $ra
+endSearch:
+    jr $ra               
